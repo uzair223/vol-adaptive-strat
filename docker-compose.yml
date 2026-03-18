@@ -13,8 +13,10 @@ services:
       TZ: America/New_York
 
     volumes:
-      # Mount config so you can edit params without rebuilding the image.
-      # In Coolify: add a file mount pointing to /app/config.yaml
+      # Optional override config mount.
+      # If omitted, the container uses bundled /app/default_config.yaml.
+      # In Coolify, avoid adding a directory storage mount at /app/config.yaml
+      # unless that directory contains a file named config.yaml.
       - ./config.yaml:/app/config.yaml:ro
 
     ports:

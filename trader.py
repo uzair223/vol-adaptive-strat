@@ -228,6 +228,53 @@ def fetch_historical_bars(
 # Main trader
 # ─────────────────────────────────────────────────────────────────────────────
 
+def resolve_config_path(config_path: str) -> str:
+    """
+    Resolve config path robustly for container environments.
+
+    Handles three cases:
+    1) config_path is a file
+    2) config_path is a directory containing config.yaml
+    3) config_path is missing/invalid -> fallback to bundled default file
+    """
+    requested: str = os.path.expanduser(config_path)
+
+    candidates: list[str] = [requested]
+    if not os.path.isabs(requested):
+        candidates.append(os.path.join(os.getcwd(), requested))
+
+    checked: list[str] = []
+    for candidate in candidates:
+        normalized = os.path.abspath(candidate)
+        if normalized in checked:
+            continue
+        checked.append(normalized)
+
+        if os.path.isfile(normalized):
+            return normalized
+        if os.path.isdir(normalized):
+            nested = os.path.join(normalized, "config.yaml")
+            if os.path.isfile(nested):
+                return nested
+
+    fallback_candidates: list[str] = [
+        "/app/default_config.yaml",
+        os.path.join(os.getcwd(), "default_config.yaml"),
+    ]
+    for fallback in fallback_candidates:
+        if os.path.isfile(fallback):
+            print(
+                f"[trader] Config path '{config_path}' is not a readable file. "
+                f"Falling back to '{fallback}'.",
+                file=sys.stderr,
+            )
+            return fallback
+
+    raise FileNotFoundError(
+        f"Config path '{config_path}' is not a file and no fallback config was found. "
+        "Expected a YAML file or a directory containing config.yaml."
+    )
+
 class Trader:
     """
     Orchestrates data ingestion, signal computation, and order execution.
@@ -236,12 +283,13 @@ class Trader:
     """
 
     def __init__(self, config_path: str = "config.yaml") -> None:
-        self.config_path:  str            = config_path
+        resolved_config_path: str = resolve_config_path(config_path)
+        self.config_path:  str            = resolved_config_path
         self._params_lock: threading.Lock = threading.Lock()
 
         params: StrategyParams
         cfg:    dict[str, Any]
-        params, cfg = load_config(config_path)
+        params, cfg = load_config(resolved_config_path)
         self.params: StrategyParams  = params
         self.cfg:    dict[str, Any]  = cfg
 

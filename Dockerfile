@@ -15,7 +15,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy source
 COPY strategy/ ./strategy/
-COPY trader.py control.py config.yaml ./
+COPY trader.py control.py ./
+COPY config.yaml ./default_config.yaml
 
 # Logs dir (can also be mounted as a volume)
 RUN mkdir -p logs
