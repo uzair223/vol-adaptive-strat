@@ -39,33 +39,6 @@ python trader.py
 python control.py repl
 ```
 
-## Common Control Commands
-
-- status
-- get
-- get <key1> <key2>
-- set <key> <value>
-- set <key> <value> --persist
-- reload-config
-- pause / resume
-- close-position
-
-## Docker
-
-Use docker-compose.yml for containerized runs.
-
-### Coolify Note (Config Mount)
-
-If you mount a host path to `/app/config.yaml`, ensure the source is a file.
-Mounting a directory to that target can fail container startup (OCI mount type mismatch).
-
-This image is resilient to missing/invalid `/app/config.yaml` and will fall back to
-the bundled `/app/default_config.yaml` automatically.
-
-If you want to override config from a directory mount in Coolify, place a file at:
-
-- `/app/config.yaml/config.yaml`
-
 ## Backtesting
 
 See backtest/README.md for notebook usage notes.
