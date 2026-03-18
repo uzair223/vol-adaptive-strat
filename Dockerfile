@@ -1,21 +1,26 @@
-# 1. Use a slim Python image to keep the footprint small
-FROM python:3.11-slim
+FROM python:3.12-slim
 
-# 2. Set the working directory
+# System deps (tzdata for correct market-hours handling)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    tzdata \
+    && rm -rf /var/lib/apt/lists/*
+
+ENV TZ=America/New_York
+
 WORKDIR /app
 
-# 3. Copy only the requirements file first to leverage Docker caching
+# Install Python deps first (better layer caching)
 COPY requirements.txt .
-
-# 4. Install dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# 5. Copy only the specific application files
-# These are the three core modules needed for the bot to run
-COPY main.py bot.py dashboard.py ./
+# Copy source
+COPY strategy/ ./strategy/
+COPY trader.py control.py config.yaml ./
 
-# 6. Expose the port for the Dash dashboard
-EXPOSE 8050
+# Logs dir (can also be mounted as a volume)
+RUN mkdir -p logs
 
-# 7. Run the application
-CMD ["python", "main.py"]
+# Control socket is internal-only; 9999 is exposed for host/sidecar access
+EXPOSE 9999
+
+CMD ["python", "trader.py", "--config", "config.yaml"]

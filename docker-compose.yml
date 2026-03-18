@@ -1,0 +1,53 @@
+services:
+  trader:
+    build: .
+    image: vix-trader:latest
+    restart: unless-stopped
+
+    environment:
+      # ── Alpaca credentials ────────────────────────────────────────────────
+      APCA_API_KEY_ID: ${APCA_API_KEY_ID}
+      APCA_API_SECRET_KEY: ${APCA_API_SECRET_KEY}
+
+      # ── Optional overrides (also settable in config.yaml) ─────────────────
+      TZ: America/New_York
+
+    volumes:
+      # Mount config so you can edit params without rebuilding the image.
+      # In Coolify: add a file mount pointing to /app/config.yaml
+      - ./config.yaml:/app/config.yaml:ro
+
+    ports:
+      # Control socket — bind to localhost only; do NOT expose publicly.
+      # Use `docker exec` or an SSH tunnel to reach it remotely:
+      #   ssh -L 9999:localhost:9999 user@your-server
+      #   python control.py repl
+      - "127.0.0.1:9999:9999"
+
+    # Limit blast radius if something goes wrong
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 512M
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
+
+    healthcheck:
+      # The container is healthy if the control socket accepts connections
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import socket; s=socket.create_connection(('127.0.0.1',9999),timeout=3); s.close()",
+        ]
+      interval: 60s
+      timeout: 5s
+      retries: 3
+      start_period: 60s # give warm-up time before first check
+

@@ -1,0 +1,46 @@
+strategy:
+  symbol: "SPY"
+  timeframe: "1Hour" # 1Hour | 30Min | 15Min | 5Min
+  strategy_type: "combined" # combined | mean_reversion | trend
+  long_only: false
+
+  # ── Vol regime ────────────────────────────────────────────────────────────
+  band_std_dev: 0.8 # vol-band half-width in σ units
+  ema_span: 5 # VIX EMA span (trading days)
+  zscore_window: 21 # rolling z-score lookback (trading days)
+  vol_regime_threshold: 0.0 # z-score above this → high-vol / MR mode
+  use_stress_flag: true # require VIX term structure inversion for MR
+
+  # ── VWAP anchor ───────────────────────────────────────────────────────────
+  anchor_recompute: 1 # reset VWAP block every N trading days (0 = daily cum)
+
+  # ── Trend following ───────────────────────────────────────────────────────
+  trend_ma_window: 10 # EMA trend window (trading days)
+
+  # ── Risk ─────────────────────────────────────────────────────────────────
+  atr_period: 5 # ATR averaging window (trading days)
+  atr_multiplier: 3.0 # trailing-stop distance in ATR multiples
+
+  # Allow fractional shares on long entries (Alpaca supports fractional for
+  # longs only — short orders are always rounded down to whole shares).
+  allow_fractional: true
+  mr_exposure: 1.0
+  tf_exposure: 1.0
+
+execution:
+  exchange: "iex" # iex | sip
+  paper_trading: true # true = paper endpoint, false = live
+  delayed_warmup: true # if true, wait for iex historical data to catch up (15 min)
+
+alpaca:
+  # Leave blank to read from APCA_API_KEY_ID / APCA_API_SECRET_KEY env vars
+  api_key: ""
+  secret_key: ""
+
+control:
+  host: "127.0.0.1"
+  port: 9999
+
+logging:
+  level: "INFO"
+  file: "" # empty = stdout only (no on-disk log persistence)

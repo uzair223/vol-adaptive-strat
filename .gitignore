@@ -1,6 +1,8 @@
 **/.**/
 .sqlhistory
 *.env*
+!*.env.example
 db/**
-tmp/**
+**/tmp/**
 **/__pycache__/**
+**/logs/**
