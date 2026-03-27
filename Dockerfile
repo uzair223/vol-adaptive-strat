@@ -1,27 +1,34 @@
-FROM python:3.12-slim
+FROM python:3.11-slim
 
-# System deps (tzdata for correct market-hours handling)
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    tzdata \
-    && rm -rf /var/lib/apt/lists/*
-
-ENV TZ=America/New_York
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1
 
 WORKDIR /app
 
-# Install Python deps first (better layer caching)
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Install build tools for scientific Python packages when wheels are unavailable.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends build-essential \
+    && rm -rf /var/lib/apt/lists/*
 
-# Copy source
-COPY strategy/ ./strategy/
-COPY trader.py control.py ./
-COPY config.yaml ./default_config.yaml
+COPY requirements.txt ./
+RUN pip install --upgrade pip \
+    && pip install -r requirements.txt
 
-# Logs dir (can also be mounted as a volume)
-RUN mkdir -p logs
+# Copy only runtime files required by live/backtest execution.
+COPY src ./src
+COPY live.py ./
+COPY backtest.py ./
+COPY cli.py ./
+COPY config.yaml ./
 
-# Control socket is internal-only; 9999 is exposed for host/sidecar access
-EXPOSE 9999
+# Run as non-root user.
+RUN useradd -m appuser \
+    && mkdir -p /app/models /app/logs \
+    && chown -R appuser:appuser /app
+USER appuser
 
-CMD ["python", "trader.py", "--config", "config.yaml"]
+# Ensure orchestrators send SIGINT for graceful shutdown handling.
+STOPSIGNAL SIGINT
+
+CMD ["python", "live.py"]

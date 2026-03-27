@@ -1,55 +1,75 @@
 services:
-  trader:
-    build: .
-    image: vix-trader:latest
-    restart: unless-stopped
-
+  live:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: vol-adaptive-strat:latest
+    init: true
     environment:
-      # ── Alpaca credentials ────────────────────────────────────────────────
-      APCA_API_KEY_ID: ${APCA_API_KEY_ID}
-      APCA_API_SECRET_KEY: ${APCA_API_SECRET_KEY}
-
-      # ── Optional overrides (also settable in config.yaml) ─────────────────
-      TZ: America/New_York
-
+      APCA_API_KEY_ID: ${APCA_API_KEY_ID:-}
+      APCA_API_SECRET_KEY: ${APCA_API_SECRET_KEY:-}
+      CLI_HOST: ${CLI_HOST:-0.0.0.0}
+      CLI_PORT: ${CLI_PORT:-9000}
+      CLI_TIMEOUT_SECONDS: ${CLI_TIMEOUT_SECONDS:-30}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      LOG_DIR: ${LOG_DIR:-/app/logs}
+      LOG_CONSOLE: ${LOG_CONSOLE:-true}
+      TZ: ${TZ:-America/New_York}
+      HMM_MODEL_PATH: ${HMM_MODEL_PATH:-/app/models/regime_hmm.pkl}
+    command: ["python", "live.py"]
     volumes:
-      # Optional override config mount.
-      # If omitted, the container uses bundled /app/default_config.yaml.
-      # In Coolify, avoid adding a directory storage mount at /app/config.yaml
-      # unless that directory contains a file named config.yaml.
       - ./config.yaml:/app/config.yaml:ro
-
-    ports:
-      # Control socket — bind to localhost only; do NOT expose publicly.
-      # Use `docker exec` or an SSH tunnel to reach it remotely:
-      #   ssh -L 9999:localhost:9999 user@your-server
-      #   python control.py repl
-      - "127.0.0.1:9999:9999"
-
-    # Limit blast radius if something goes wrong
-    deploy:
-      resources:
-        limits:
-          cpus: "1"
-          memory: 512M
-
-    logging:
-      driver: json-file
-      options:
-        max-size: "20m"
-        max-file: "5"
-
+      - hmm-models:/app/models
+      - app-logs:/app/logs
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     healthcheck:
-      # The container is healthy if the control socket accepts connections
       test:
         [
           "CMD",
           "python",
           "-c",
-          "import socket; s=socket.create_connection(('127.0.0.1',9999),timeout=3); s.close()",
+          "import os,socket; s=socket.socket(); s.settimeout(3); s.connect(('127.0.0.1', int(os.getenv('CLI_PORT','9000')))); s.close()",
         ]
-      interval: 60s
+      interval: 30s
       timeout: 5s
-      retries: 3
-      start_period: 60s # give warm-up time before first check
+      retries: 5
+      start_period: 45s
+    stop_grace_period: 30s
+    restart: unless-stopped
 
+  backtest:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: vol-adaptive-strat:latest
+    init: true
+    environment:
+      APCA_API_KEY_ID: ${APCA_API_KEY_ID:-}
+      APCA_API_SECRET_KEY: ${APCA_API_SECRET_KEY:-}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      LOG_DIR: ${LOG_DIR:-/app/logs}
+      LOG_CONSOLE: ${LOG_CONSOLE:-true}
+      TZ: ${TZ:-America/New_York}
+      HMM_MODEL_PATH: ${HMM_MODEL_PATH:-/app/models/regime_hmm.pkl}
+    command: ["python", "backtest.py", "--config", "config.yaml"]
+    volumes:
+      - ./config.yaml:/app/config.yaml:ro
+      - hmm-models:/app/models
+      - app-logs:/app/logs
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    profiles:
+      - backtest
+
+volumes:
+  hmm-models:
+  app-logs:

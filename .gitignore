@@ -1,8 +1,10 @@
-**/.**/
 .sqlhistory
 *.env*
 !*.env.example
-db/**
-**/tmp/**
-**/__pycache__/**
-**/logs/**
+
+**/.**
+**/tmp
+**/*.egg-info
+**/__pycache__
+**/logs
+**/models
