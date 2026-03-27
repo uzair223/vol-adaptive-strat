@@ -1,46 +1,68 @@
+# Vol-adaptive Strategy - Live Trading Configuration
+# All values can be updated via CLI without restarting the strategy
+
+trading:
+  # Alpaca API credentials (use environment variables for security)
+  # Set APCA_API_KEY_ID and APCA_API_SECRET_KEY
+  paper_trading: true # Set to false for live trading
+  allow_fractional_shares: true # Enable fractional shares for better position sizing
+
+  # Assets to trade - each needs price data
+  assets:
+    - name: spy
+      yf: SPY
+      apca: SPY
+      regime_weights:
+        CALM: 1.20
+        RECOVERY: 1.80
+        STRESS: 0.35
+        CRISIS: 0.00
+    - name: gld
+      yf: GC=F
+      apca: GLD
+      regime_weights:
+        CALM: 0.20
+        RECOVERY: 0.15
+        STRESS: 0.75
+        CRISIS: 1.00
+
+  rebalance_freq: "1d" # Rebalance frequency (e.g., "1d", "1w", "1mo")
+  min_rebalance_threshold: 0.1 # Min change in target weights to trigger rebalance
+
+  # Market hours (NYSE hours in US/Eastern)
+  market_open: "09:30"
+  market_close: "16:00"
+  timezone: "US/Eastern"
+
+data:
+  # Data fetching for initialization
+  lookback_days: 252 # ~2 years of historical data
+
+  # For future websocket support, can add:
+  # data_source: alpaca  # or: websocket, file, etc.
+
 strategy:
-  symbol: "SPY"
-  timeframe: "1Hour" # 1Hour | 30Min | 15Min | 5Min
-  strategy_type: "combined" # combined | mean_reversion | trend
-  long_only: false
+  # Volatility targeting
+  target_vol: 0.12 # Target annualized volatility
+  vol_lookback: 21 # Rolling window in trading days
+  vol_floor: 0.03 # Minimum realized vol for scaling
+  base_leverage: 1.5 # Base leverage for regime weighting
+  max_exposure: 2.0 # Max portfolio leverage
+  conf_min: 0.7 # Min confidence threshold for position sizing
 
-  # ── Vol regime ────────────────────────────────────────────────────────────
-  band_std_dev: 0.8 # vol-band half-width in σ units
-  ema_span: 5 # VIX EMA span (trading days)
-  zscore_window: 21 # rolling z-score lookback (trading days)
-  vol_regime_threshold: 0.0 # z-score above this → high-vol / MR mode
-  use_stress_flag: true # require VIX term structure inversion for MR
+regime_detector:
+  # HMM parameters for regime detection
+  n_init: 10 # HMM initialization attempts
+  n_iter: 1000 # HMM training iterations
+  random_state: 42
 
-  # ── VWAP anchor ───────────────────────────────────────────────────────────
-  anchor_recompute: 1 # reset VWAP block every N trading days (0 = daily cum)
+  # Retraining schedule and data window
+  retrain_interval_days: 30 # Retrain every N calendar days (e.g., 30 for monthly)
+  retrain_window_days: 252 # Use last N trading days for retraining fit (e.g., 252 for ~1 year)
 
-  # ── Trend following ───────────────────────────────────────────────────────
-  trend_ma_window: 10 # EMA trend window (trading days)
+  # Regime smoothing
+  min_holding_period: 5 # Min bars in regime before switching
+  transition_penalty: 0.25 # Penalty for unlikely regime transitions
 
-  # ── Risk ─────────────────────────────────────────────────────────────────
-  atr_period: 5 # ATR averaging window (trading days)
-  atr_multiplier: 3.0 # trailing-stop distance in ATR multiples
-
-  # Allow fractional shares on long entries (Alpaca supports fractional for
-  # longs only — short orders are always rounded down to whole shares).
-  allow_fractional: true
-  mr_exposure: 1.0
-  tf_exposure: 1.0
-
-execution:
-  exchange: "iex" # iex | sip
-  paper_trading: true # true = paper endpoint, false = live
-  delayed_warmup: true # if true, wait for iex historical data to catch up (15 min)
-
-alpaca:
-  # Leave blank to read from APCA_API_KEY_ID / APCA_API_SECRET_KEY env vars
-  api_key: ""
-  secret_key: ""
-
-control:
-  host: "127.0.0.1"
-  port: 9999
-
-logging:
-  level: "INFO"
-  file: "" # empty = stdout only (no on-disk log persistence)
+  # Signal filtering
+  low_confidence_threshold: 0.55 # Min confidence to act on regime
