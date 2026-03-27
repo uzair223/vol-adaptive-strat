@@ -1,71 +1,130 @@
-# VIX Regime-Adaptive Trading Strategy
+# Vol-Adaptive Regime Strategy
 
-Lightweight live trading project built around a VIX regime signal engine and a state-machine executor.
+This repository implements a regime-aware, volatility-targeted allocation strategy.
 
-## Contents
+The core idea is simple:
 
-- trader.py: live runtime (data stream, signals, state transitions, order execution)
-- control.py: CLI and REPL control socket client
-- strategy/: signal and state-machine logic
-- config.yaml: runtime parameters
-- backtest/: research notebook and related artifacts
+- Risk is not constant. Market behavior changes by regime.
+- Allocation should adapt to both regime and confidence.
+- Realized volatility should be targeted so total risk remains controlled.
 
-## Quick Start (Local)
+## Strategy Intuition
 
-1. Create/activate virtual environment.
-2. Install dependencies:
+The strategy combines three layers of risk control:
 
-```bash
-pip install -r requirements.txt
-```
+1. Regime layer
 
-3. Set Alpaca credentials in environment variables:
+- A Hidden Markov Model (HMM) classifies market state into four regimes:
+  - CALM: low implied volatility, benign conditions
+  - STRESS: elevated risk, risk building
+  - CRISIS: acute dislocation
+  - RECOVERY: post-shock normalization
+- Each traded asset has regime-specific base weights.
 
-```bash
-APCA_API_KEY_ID=...
-APCA_API_SECRET_KEY=...
-```
+2. Confidence layer
 
-4. Review config.yaml (symbol, timeframe, exchange, risk params).
-5. Start trader:
+- The HMM produces posterior probabilities over regimes.
+- Confidence is derived from posterior entropy and mapped to a scale factor.
+- Low-confidence signals are de-emphasized rather than hard-switched.
 
-```bash
-python trader.py
-```
+3. Volatility-targeting layer
 
-6. Open control REPL in another terminal:
+- For each asset, realized volatility is estimated from trailing log returns.
+- Exposure is scaled by target_vol / realized_vol (with a volatility floor).
+- Portfolio gross exposure is capped at max_exposure.
 
-```bash
-python control.py repl
-```
+This creates a strategy that can be aggressive in favorable regimes, defensive in stressed regimes, and less reactive when the model is uncertain.
 
-## Common Control Commands
+## Regime Detection Overview
 
-- status
-- get
-- get <key1> <key2>
-- set <key> <value>
-- set <key> <value> --persist
-- reload-config
-- pause / resume
-- close-position
+Regime inference uses a feature set built from volatility and macro-proxy structure:
 
-## Docker
+- Vol level and slope: VIX, VIX3M term structure
+- Vol-of-vol: VVIX level and momentum
+- IV vs realized vol spread
+- Short-horizon momentum and long-horizon context (z-score)
+- Inflation proxy dynamics using TIP and IEF
 
-Use docker-compose.yml for containerized runs.
+Additional stabilizers in the detector:
 
-### Coolify Note (Config Mount)
+- Soft transition penalties to discourage semantically unlikely jumps
+- Minimum holding period filter to suppress short-lived flips
+- Periodic retraining on a rolling window
+- Optional model serialization for warm starts
 
-If you mount a host path to `/app/config.yaml`, ensure the source is a file.
-Mounting a directory to that target can fail container startup (OCI mount type mismatch).
+## Allocation Formula (Conceptual)
 
-This image is resilient to missing/invalid `/app/config.yaml` and will fall back to
-the bundled `/app/default_config.yaml` automatically.
+Per-asset raw exposure is computed as:
 
-If you want to override config from a directory mount in Coolify, place a file at:
+exposure_raw = base_leverage x regime_weight x confidence_scale x vol_scale
 
-- `/app/config.yaml/config.yaml`
+Where:
 
-## Backtesting
+- regime_weight comes from config for the current regime
+- confidence_scale maps model confidence into [0, 1]
+- vol_scale = min(target_vol / realized_vol, cap)
 
-See backtest/README.md for notebook usage notes.
+Then all raw exposures are proportionally scaled to enforce:
+
+- sum(abs(exposure_i)) <= max_exposure
+
+## Data and Trading Flow
+
+Daily flow in live mode:
+
+1. Load historical data and initialize regime detector
+2. At market-open event, fetch latest daily bars
+3. Update regime state and compute target allocations
+4. Rebalance only when rebalance_freq bucket changes
+5. Skip tiny changes under min_rebalance_threshold
+
+Assets and behavior are configured in config.yaml.
+
+## Why This Design
+
+This architecture attempts to balance:
+
+- Adaptivity: regime-conditioned behavior
+- Robustness: confidence-aware sizing and smoothing
+- Risk discipline: volatility targeting plus gross exposure cap
+- Practicality: periodic retraining, serialization, CLI control
+
+## Current Scope and Assumptions
+
+- Primary runtime target is daily bars (not intraday execution logic).
+- Regime model is statistical, not causal explanation of markets.
+- Performance depends on feature stability and data quality.
+- Broker/API failures can still dominate realized behavior in production.
+
+## Running
+
+Local scripts:
+
+- Live: python live.py
+- Backtest: python backtest.py --config config.yaml --days 252
+- CLI (from another shell while live is running): python cli.py status
+
+Docker:
+
+- Start live service: docker compose up -d --build live
+- Run backtest profile: docker compose run --rm backtest python backtest.py --config config.yaml --days 30
+
+## Configuration Pointers
+
+Key controls in config.yaml:
+
+- strategy.target_vol
+- strategy.base_leverage
+- strategy.max_exposure
+- strategy.conf_min
+- trading.rebalance_freq
+- trading.min_rebalance_threshold
+- regime_detector.retrain_interval_days
+- regime_detector.retrain_window_days
+
+Container env controls:
+
+- APCA_API_KEY_ID
+- APCA_API_SECRET_KEY
+- HMM_MODEL_PATH
+- CLI_HOST / CLI_PORT
